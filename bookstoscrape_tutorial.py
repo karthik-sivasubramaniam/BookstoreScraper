@@ -2,37 +2,51 @@ from bs4 import BeautifulSoup as bs4
 import requests
 import pandas as pd
 
-pages=[]
-prices=[]
-stars=[]
-titles=[]
-urlss=[]
+tld = "http://books.toscrape.com"
+next = ""
 
-pages_to_scrape=5
+titles = []
+prices = []
+ratings = []
+images = []
 
-for i in range(1,pages_to_scrape+1):
-    url = ('http://books.toscrape.com/catalogue/page-{}.html').format(i)
-    pages.append(url)
-for item in pages:
-    page = requests.get(item)
-    soup = bs4(page.text, 'html.parser')
-    for i in soup.findAll('h3'):
-        ttl=i.getText()
-        titles.append(ttl)
-    for j in soup.findAll('p', class_='price_color'):
-        price=j.getText()
+def extract_books(url):
+    
+    html = requests.get(url).text
+    soup = bs4(html, "html.parser")
+    listings = soup.find_all("article", "product_pod")
+
+    for listing in listings:
+        title = listing.find("h3").find("a")["title"]
+        titles.append(title)
+        rating = listing.find("p").attrs["class"][1]
+        ratings.append(rating)
+        price = listing.find("p","price_color").text.lstrip('Â')
         prices.append(price)
-    for s in soup.findAll('p', class_='star-rating'):
-        for k,v in s.attrs.items():
-            star =v[1]
-            stars.append(star)
-    divs =soup.findAll('div', class_='image_container')
-    for thumbs in divs:
-        tgs=thumbs.find('img',class_='thumbnail')
-        urls='http://books.toscrape.com/'+str(tgs['src'])
-        newurls=urls.replace("../","")
-        urlss.append(newurls)
-data={'Title': titles, 'Prices': prices, 'Stars':stars, "URLs":urlss}
-df=pd.DataFrame(data=data)
-df.index+=1
-df.to_excel("~/Desktop/tutorials/BookStoreWS/output.xlsx")
+        image_path = listing.find("img", class_="thumbnail").attrs["src"]
+        image = "/".join([tld, image_path])
+        images.append(image)
+
+    global next
+    try:
+        next = soup.find("li", class_="next").find("a").attrs["href"].lstrip("catalogue/")
+    except AttributeError:
+        next = None
+        return next
+    next = "catalogue/" + next
+
+while next != None:
+    url = "/".join([tld, next])
+    extract_books(url)
+
+data = {
+    "titles": titles,
+    "images": images,
+    "prices": prices,
+    "ratings": ratings
+}
+
+books = pd.DataFrame(data=data)
+books.index += 1
+
+print(books)
